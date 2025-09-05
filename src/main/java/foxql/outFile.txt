@@ -1,0 +1,27 @@
+======DBC File METADATA======
+
+OBJECTID (73)	PARENTID (73)	OBJECTTYPE (67)	OBJECTNAME (67)	PROPERTY (77)	C,ODE (77)	RIINFO (67)	USER (77)	Da	tabase Database
+Database TransactionLog	
+Database StoredProceduresSource	
+Database StoredProceduresObject	
+Database StoredProceduresDependencies	
+Table customers	
+Field	cust_i	
+
+Field	name	
+Field country	
+Index pk_cust_id	
+Table orders	
+Field order_id	
+Field cust_id	
+Field total	
+I	
+dex fk	_cust_id	
+Relation Relation 1	
+
+
+=== Primary Keys ===
+customers : cust_id
+
+=== Foreign Keys ===
+orders : [cust_id->customers]
