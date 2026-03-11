@@ -2,7 +2,7 @@
 
 **Visual FoxPro → MySQL migration tool with a polished desktop UI**
 
-FoxMorph reads `.dbc` database catalogs and `.dbf` table files from legacy Visual FoxPro projects and produces a clean, executable MySQL SQL file — complete with schema, data, constraints, and indexes. It ships with a full Swing GUI so non-technical users can run migrations without touching a command line.
+FoxMorph reads `.dbc` database catalogs and `.dbf` table files from legacy Visual FoxPro projects and produces a clean, executable MySQL SQL file — complete with schema, data, constraints, and indexes. It ships with a JavaFX desktop UI so non-technical users can run migrations without touching a command line.
 
 ---
 
@@ -182,8 +182,7 @@ Click **Generate SQL**. Progress appears in the live console log at the bottom o
 
 FoxMorph automatically switches to the **SQL Preview** tab once generation completes.
 
-- Full syntax highlighting (keywords, types, strings, comments, identifiers)
-- Line-number gutter that stays synchronized when scrolling
+- Editable SQL editor with monospace font rendering
 - Editable — you can fix anything before running
 - **Copy SQL** button copies the entire file to the clipboard
 
@@ -308,13 +307,13 @@ src/main/java/org/example/
     ForeignKeyInfo.java     — FK column + referenced table
     IndexInfo.java          — index name, column, uniqueness flag
   ui/
-    FoxMorph.java           — main frame, sidebar, tab switching
-    ConverterPanel.java     — form + live log console
-    SqlPreviewPanel.java    — syntax-highlighted editor + run button
-    HistoryPanel.java       — conversion history table
-    LoginDialog.java        — MySQL connection + profile management
-    Theme.java              — design tokens (colors, fonts)
-    UiFactory.java          — polished component factory
+    FoxMorphApp.java        — JavaFX Application entry point, sidebar, panel switching with fade transitions
+    ConverterView.java      — form + live log console (JavaFX VBox/TextFlow)
+    SqlPreviewView.java     — SQL editor + run button (JavaFX TextArea)
+    HistoryView.java        — conversion history TableView with observable row model
+    LoginStage.java         — undecorated modal MySQL connection + profile management
+    AppTheme.java           — CSS stylesheet + colour constants
+    FxComponents.java       — reusable styled button/field/card factory
   util/
     ColumnMatcher.java      — fuzzy matching of index tags to column names
     DbfTypeMapper.java      — VFP DBF type → MySQL type string
@@ -338,6 +337,7 @@ src/main/java/org/example/
 | Dependency | Version | Purpose |
 |---|---|---|
 | Java | 21+ | Runtime |
+| JavaFX | 21+ | Desktop UI framework |
 | MySQL Connector/J | 8.x | JDBC driver for execution |
 | JavaDBF (`com.linuxense`) | latest | DBF file reading |
 | MySQL Server | 8.x | Target database |
@@ -354,6 +354,16 @@ Add to `pom.xml`:
   <groupId>com.mysql</groupId>
   <artifactId>mysql-connector-j</artifactId>
   <version>8.3.0</version>
+</dependency>
+<dependency>
+  <groupId>org.openjfx</groupId>
+  <artifactId>javafx-controls</artifactId>
+  <version>21</version>
+</dependency>
+<dependency>
+  <groupId>org.openjfx</groupId>
+  <artifactId>javafx-fxml</artifactId>
+  <version>21</version>
 </dependency>
 ```
 
