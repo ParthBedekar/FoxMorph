@@ -73,7 +73,7 @@ public class DbcCatalogReader {
         for (CatalogRow row : rows) {
             if ("Field".equalsIgnoreCase(row.objectType()) && !row.objectName().isEmpty()) {
                 if (idToTable.containsKey(row.parentId())) {
-                    tableFields.computeIfAbsent(row.parentId(), _ -> new ArrayList<>())
+                    tableFields.computeIfAbsent(row.parentId(), e -> new ArrayList<>())
                             .add(row.objectName().toLowerCase());
                 }
             }
@@ -108,16 +108,16 @@ public class DbcCatalogReader {
                 // Store expression (resolved column) + tag as fallback
                 // referencesTable resolved in pass 4
                 schema.foreignKeys
-                        .computeIfAbsent(table, _ -> new ArrayList<>())
+                        .computeIfAbsent(table, e -> new ArrayList<>())
                         .add(new ForeignKeyInfo(expression, null));
                 System.out.println("    → FK col: " + expression);
 
             } else if (tagLower.startsWith("uk_") || tagLower.startsWith("uk")) {
-                schema.indexes.computeIfAbsent(table, _ -> new ArrayList<>())
+                schema.indexes.computeIfAbsent(table, e -> new ArrayList<>())
                         .add(new IndexInfo(tagName, expression, true));
                 System.out.println("    → UNIQUE: " + expression);
             } else {
-                schema.indexes.computeIfAbsent(table, _ -> new ArrayList<>())
+                schema.indexes.computeIfAbsent(table, e -> new ArrayList<>())
                         .add(new IndexInfo(tagName, expression, false));
                 System.out.println("    → index: " + expression);
             }
