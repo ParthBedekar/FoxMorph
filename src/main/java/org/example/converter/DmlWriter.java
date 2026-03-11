@@ -27,18 +27,18 @@ public class DmlWriter {
         this.dbcDir  = dbcDir;
     }
 
-    public void writeInserts(String tableName, FileInputStream fis) throws IOException {
+    public int writeInserts(String tableName, FileInputStream fis) throws IOException {
+        int rowCount = 0;
         try (FileWriter writer = new FileWriter(sqlFile, true)) {
             DBFReader reader = new DBFReader(fis);
-            reader.setCharactersetName("UTF-8");
+            reader.setCharactersetName("Cp1252");
 
             int columnCount = reader.getFieldCount();
-            if (columnCount == 0) return;
+            if (columnCount == 0) return 0;
 
             List<DBFField> fields      = collectFields(reader, columnCount);
             List<String>   columnNames = fields.stream().map(DBFField::getName).collect(Collectors.toList());
 
-            // Track auto-increment counters (type 'I') per column index
             Map<Integer, Integer> autoCounters = new HashMap<>();
             for (int i = 0; i < columnCount; i++) {
                 if (DbfTypeMapper.isAutoIncrement(fields.get(i))) autoCounters.put(i, 1);
@@ -57,6 +57,7 @@ public class DmlWriter {
                 }
 
                 valueClauses.add(buildValueClause(row, fields, columnCount, autoCounters));
+                rowCount++;
 
                 if (valueClauses.size() >= BATCH_SIZE) {
                     writeBatch(writer, tableName, columnNames, valueClauses);
@@ -68,6 +69,7 @@ public class DmlWriter {
 
             writer.write(System.lineSeparator());
         }
+        return rowCount;
     }
 
     // -------------------------------------------------------------------------
@@ -88,7 +90,7 @@ public class DmlWriter {
     }
 
     private String toSqlValue(Object raw, DBFField field, int idx,
-                               Map<Integer, Integer> autoCounters) {
+                              Map<Integer, Integer> autoCounters) {
         // Auto-increment: use counter when value is absent/invalid
         if (autoCounters.containsKey(idx)) {
             String norm = StringUtils.normalizeRaw(raw);
@@ -149,8 +151,8 @@ public class DmlWriter {
     // -------------------------------------------------------------------------
 
     private void writeBatch(FileWriter writer, String tableName,
-                             List<String> columnNames,
-                             List<String> valueClauses) throws IOException {
+                            List<String> columnNames,
+                            List<String> valueClauses) throws IOException {
         writer.write("INSERT INTO `" + tableName + "` (");
         writer.write(columnNames.stream()
                 .map(n -> "`" + n + "`")

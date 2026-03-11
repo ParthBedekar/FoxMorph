@@ -1,12 +1,12 @@
 package org.example.converter;
 
 import org.example.config.AppConfig;
+import org.example.config.HistoryStore;
 import org.example.db.SqlExecutor;
 import org.example.model.SchemaInfo;
 import org.example.util.StringUtils;
 
 import java.io.*;
-import java.nio.file.Files;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -14,6 +14,12 @@ public class ConversionPipeline {
 
     private final AppConfig        config;
     private final Consumer<String> log;
+
+    // Captured during generate() so execute() can record history
+    private String lastDbcPath;
+    private String lastDbName;
+    private int    lastTablesDone;
+    private int    lastRowsInserted;
 
     public ConversionPipeline(AppConfig config) {
         this(config, System.out::println);
@@ -24,18 +30,16 @@ public class ConversionPipeline {
         this.log    = log;
     }
 
-    /** Full run: generate SQL then execute against MySQL. */
+    /** Full run: generate then execute. */
     public void run(String dbcPath, String destDir, String filename) throws Exception {
         File sqlFile = generate(dbcPath, destDir, filename);
-        log.accept("🚀 Executing SQL against MySQL...");
-        new SqlExecutor(config).execute(sqlFile);
+        execute(sqlFile);
     }
 
-    /**
-     * Generate-only mode: writes the SQL file and returns it.
-     * Does NOT execute against MySQL.
-     */
+    /** Generate-only: writes SQL file, records history on failure. */
     public File generate(String dbcPath, String destDir, String filename) throws Exception {
+        lastDbcPath = dbcPath;
+
         File dbcFile = new File(dbcPath);
         File dbcDir  = dbcFile.getParentFile();
         File outDir  = new File(destDir);
@@ -44,6 +48,7 @@ public class ConversionPipeline {
         File   sqlFile = new File(outDir, filename);
         String rawDb   = filename.contains(".") ? filename.substring(0, filename.lastIndexOf('.')) : filename;
         String dbName  = StringUtils.sanitizeIdentifier(rawDb);
+        lastDbName = dbName;
 
         Map<String, File> dbfIndex = buildDbfIndex(dbcDir);
         log.accept("   DBF files in folder: " + dbfIndex.keySet());
@@ -57,6 +62,7 @@ public class ConversionPipeline {
         DmlWriter    dml     = new DmlWriter(sqlFile, dbcDir);
         List<String> skipped = new ArrayList<>();
         int          done    = 0;
+        int          rows    = 0;
 
         ddl.writeDatabaseHeader();
 
@@ -86,7 +92,8 @@ public class ConversionPipeline {
             }
 
             try (FileInputStream fis = new FileInputStream(dbfFile)) {
-                dml.writeInserts(actualTableName, fis);
+                int tableRows = dml.writeInserts(actualTableName, fis);
+                rows += tableRows;
             } catch (Exception e) {
                 String msg = actualTableName + " — INSERT failed: " + e.getMessage();
                 log.accept("❌ " + msg);
@@ -103,6 +110,9 @@ public class ConversionPipeline {
             new ProcedureConverter(sqlFile).write(schema.procedures);
         }
 
+        lastTablesDone   = done;
+        lastRowsInserted = rows;
+
         log.accept("─".repeat(48));
         log.accept(String.format("✅ Done — %d table(s) converted successfully.", done));
         if (!skipped.isEmpty()) {
@@ -114,11 +124,19 @@ public class ConversionPipeline {
         return sqlFile;
     }
 
-    /** Execute a previously generated SQL file against MySQL. */
+    /** Execute a generated SQL file and record history. */
     public void execute(File sqlFile) throws Exception {
         log.accept("🚀 Executing SQL against MySQL...");
-        new SqlExecutor(config).execute(sqlFile);
-        log.accept("✅ Execution complete.");
+        try {
+            new SqlExecutor(config).execute(sqlFile);
+            log.accept("✅ Execution complete.");
+            HistoryStore.append(HistoryStore.HistoryEntry.success(
+                    lastDbcPath, lastDbName, lastTablesDone, lastRowsInserted));
+        } catch (Exception e) {
+            HistoryStore.append(HistoryStore.HistoryEntry.failure(
+                    lastDbcPath, lastDbName, e.getMessage()));
+            throw e;
+        }
     }
 
     // ── DBF helpers ───────────────────────────────────────────────────────────

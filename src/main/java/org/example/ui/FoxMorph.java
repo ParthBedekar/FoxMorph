@@ -4,17 +4,15 @@ import org.example.config.AppConfig;
 import org.example.converter.ConversionPipeline;
 
 import javax.swing.*;
-import javax.swing.text.*;
 import java.awt.*;
 import java.io.File;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 
 public class FoxMorph {
 
     private final JFrame          frame;
     private final ConverterPanel  converterPanel;
     private final SqlPreviewPanel previewPanel;
+    private final HistoryPanel    historyPanel;
     private final JTabbedPane     tabs;
     private AppConfig             config;
 
@@ -27,19 +25,17 @@ public class FoxMorph {
         frame.add(buildTopBar(),  BorderLayout.NORTH);
         frame.add(buildSidebar(), BorderLayout.WEST);
 
-        // Tabs
-        tabs = new JTabbedPane();
-        tabs.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        tabs.setBackground(Theme.BG_PANEL);
-        tabs.setForeground(Theme.TEXT_DARK);
-
+        tabs           = new JTabbedPane();
         converterPanel = new ConverterPanel(frame);
         previewPanel   = new SqlPreviewPanel(this::onRunSql);
+        historyPanel   = new HistoryPanel();
 
-        tabs.addTab("⚙  Converter", converterPanel);
+        tabs.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        tabs.addTab("⚙  Converter",  converterPanel);
         tabs.addTab("🔍  SQL Preview", previewPanel);
+        tabs.addTab("📋  History",    historyPanel);
 
-        // Wire: when SQL is generated, load it in preview and switch tabs
+        // When SQL is generated → load preview → switch to preview tab
         converterPanel.setOnSqlGenerated(sqlFile -> {
             previewPanel.loadFile(sqlFile);
             tabs.setSelectedIndex(1);
@@ -52,14 +48,16 @@ public class FoxMorph {
         login.setVisible(true);
 
         if (login.isConfirmed()) {
-            config = new AppConfig(login.getUsername(), login.getPassword());
+            config = login.getConfig();
             converterPanel.setConfig(config);
+            updateTopBarProfile(config.getProfileName());
         } else {
             System.exit(0);
         }
     }
 
-    /** Called by SqlPreviewPanel's "Run Against MySQL" button. */
+    // ── Run SQL handler ───────────────────────────────────────────────────────
+
     private void onRunSql() {
         File sqlFile = previewPanel.getCurrentSqlFile();
         if (sqlFile == null || !sqlFile.exists()) return;
@@ -67,12 +65,12 @@ public class FoxMorph {
         previewPanel.setRunning(true);
 
         new SwingWorker<Void, Void>() {
-            String result = "";
+            String statusMsg = "";
             @Override
             protected Void doInBackground() throws Exception {
-                previewPanel.flushEditsToFile(); // save any edits before running
+                previewPanel.flushEditsToFile();
                 new ConversionPipeline(config).execute(sqlFile);
-                result = "✅ Executed successfully against MySQL";
+                statusMsg = "✅ Executed successfully against MySQL";
                 return null;
             }
             @Override
@@ -80,34 +78,59 @@ public class FoxMorph {
                 previewPanel.setRunning(false);
                 try {
                     get();
-                    previewPanel.setStatus(result);
+                    previewPanel.setStatus(statusMsg);
                 } catch (Exception ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     previewPanel.setStatus("❌ " + cause.getMessage());
                 }
+                historyPanel.refresh(); // update history tab after run
             }
         }.execute();
     }
 
-    // ── Chrome ────────────────────────────────────────────────────────────────
+    // ── Top bar ───────────────────────────────────────────────────────────────
+
+    private JLabel profileLabel;
 
     private JPanel buildTopBar() {
-        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 30, 20));
+        JPanel bar = new JPanel(new BorderLayout());
         bar.setBackground(Theme.BG_TOPBAR);
-        bar.setPreferredSize(new Dimension(frame.getWidth(), 80));
+        bar.setPreferredSize(new Dimension(frame.getWidth(), 72));
+        bar.setBorder(BorderFactory.createEmptyBorder(0, 28, 0, 24));
+
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 0));
+        left.setOpaque(false);
 
         JLabel title = new JLabel("FoxMorph");
         title.setFont(Theme.FONT_TITLE);
         title.setForeground(Theme.ACCENT);
-        bar.add(title);
 
-        JLabel subtitle = new JLabel("Visual FoxPro → MySQL");
-        subtitle.setFont(new Font("Segoe UI Light", Font.PLAIN, 16));
-        subtitle.setForeground(new Color(180, 180, 200));
-        bar.add(subtitle);
+        JLabel sub = new JLabel("Visual FoxPro → MySQL");
+        sub.setFont(new Font("Segoe UI Light", Font.PLAIN, 15));
+        sub.setForeground(new Color(170, 180, 210));
+
+        left.add(title);
+        left.add(sub);
+
+        // Right: active profile chip
+        profileLabel = new JLabel();
+        profileLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        profileLabel.setForeground(new Color(160, 170, 200));
+        profileLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 8));
+
+        bar.add(left,          BorderLayout.WEST);
+        bar.add(profileLabel,  BorderLayout.EAST);
 
         return bar;
     }
+
+    private void updateTopBarProfile(String name) {
+        if (name != null && !name.isEmpty()) {
+            profileLabel.setText("🔌 " + name);
+        }
+    }
+
+    // ── Sidebar ───────────────────────────────────────────────────────────────
 
     private JPanel buildSidebar() {
         JPanel sidebar = new JPanel();
@@ -115,22 +138,24 @@ public class FoxMorph {
         sidebar.setPreferredSize(new Dimension(200, frame.getHeight()));
         sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
 
-        JButton converterBtn = makeNavButton("⚙  Converter", 0);
-        JButton previewBtn   = makeNavButton("🔍  Preview",  1);
-
-        sidebar.add(Box.createVerticalStrut(50));
-        sidebar.add(converterBtn);
+        sidebar.add(Box.createVerticalStrut(40));
+        sidebar.add(navBtn("⚙  Converter", 0));
         sidebar.add(Box.createVerticalStrut(8));
-        sidebar.add(previewBtn);
+        sidebar.add(navBtn("🔍  Preview",  1));
+        sidebar.add(Box.createVerticalStrut(8));
+        sidebar.add(navBtn("📋  History",  2));
 
         return sidebar;
     }
 
-    private JButton makeNavButton(String text, int tabIndex) {
+    private JButton navBtn(String text, int tabIndex) {
         JButton btn = UiFactory.accentButton(text);
         btn.setAlignmentX(Component.CENTER_ALIGNMENT);
         btn.setMaximumSize(new Dimension(180, 40));
-        btn.addActionListener(_ -> tabs.setSelectedIndex(tabIndex));
+        btn.addActionListener(_ -> {
+            tabs.setSelectedIndex(tabIndex);
+            if (tabIndex == 2) historyPanel.refresh();
+        });
         return btn;
     }
 
